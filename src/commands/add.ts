@@ -7,7 +7,7 @@ import inquirer from 'inquirer';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ensureDirectorySync } from '../lib/utils/filesystem';
-import { isNonInteractive, shouldProceedWithoutPrompt, getNonInteractiveDefault } from '../lib/context';
+import { isNonInteractive, shouldProceedWithoutPrompt } from '../lib/context';
 
 interface AddCommandOptions {
   source?: string;

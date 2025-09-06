@@ -223,6 +223,7 @@ describe('Add Command - Non-Interactive Mode', () => {
       };
 
       const mockConflict = {
+        component: mockMatch.component,
         source: 'project' as const
       };
 
@@ -256,6 +257,7 @@ describe('Add Command - Non-Interactive Mode', () => {
       };
 
       const mockConflict = {
+        component: mockMatch.component,
         source: 'project' as const
       };
 
@@ -300,7 +302,7 @@ describe('Add Command - Non-Interactive Mode', () => {
       };
 
       mockCore.findComponents.mockResolvedValue([mockMatch]);
-      mockCore.getComponentConflicts.mockResolvedValue([{ source: 'project' }]);
+      mockCore.getComponentConflicts.mockResolvedValue([{ component: mockMatch.component, source: 'project' }]);
 
       await addCommand.parseAsync(['node', 'zcc', 'add', 'mode', 'architect']);
 

@@ -58,14 +58,12 @@ npx zcc init
 
 #### 1. Quick Start (Recommended)
 ```bash
-# Interactive setup - choose components you want
+# Interactive setup - choose from available starter packs
 npx zcc init
 
-# Non-interactive - installs minimal setup
-npx zcc init --non-interactive
-
-# With all recommended components
-npx zcc init --all-recommended
+# Or install a specific starter pack directly (headless)
+npx zcc init --pack essentials
+npx zcc init --pack frontend-react
 ```
 
 #### 2. Global Installation
@@ -91,17 +89,20 @@ node /path/to/zcc/dist/cli.js init
 ### Common Setup Scenarios
 
 ```bash
+# Essential setup (recommended for new users)
+zcc init --pack essentials
+
 # Frontend React project
-zcc init --starter-pack frontend-react
+zcc init --pack frontend-react
 
 # Backend API project (coming soon)
-zcc init --starter-pack backend-api
+zcc init --pack backend-api
 
 # Start fresh (overwrite existing)
 zcc init --force
 
 # Automated CI/CD setup
-zcc init --force --non-interactive
+zcc init --pack essentials --force
 ```
 
 ## Starter Packs: Ready-to-Use Bundles
@@ -109,17 +110,18 @@ zcc init --force --non-interactive
 Get up and running instantly with curated collections of modes, workflows, and agents:
 
 ```bash
-# Install with automatic detection
-npx zcc init --starter-pack
+# Interactive pack selection
+npx zcc init
 
 # Or specify a pack directly
-npx zcc init --starter-pack frontend-react
+npx zcc init --pack frontend-react
 ```
 
 ### Available Packs
 
 | Pack | Description | Includes |
 |------|-------------|----------|
+| **essentials** | Essential setup for general development | Core modes (`apm`, `engineer`, `architect`, `reviewer`) + workflows (`review`, `summarize`) + essential hooks |
 | **frontend-react** | Complete React development setup | `component-engineer`, `react-architect`, `ui-reviewer` modes + creation workflows |
 | **advanced-code-refactoring** | AST-grep focused code refactoring | Advanced refactoring modes and workflows |
 

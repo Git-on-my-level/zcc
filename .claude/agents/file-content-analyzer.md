@@ -1,6 +1,10 @@
 ---
 name: file-content-analyzer
-description: Use this agent when you need to analyze large files to understand their structure, content type, and organization. Examples: <example>Context: User has a large log file and wants to understand its structure before processing it. user: "I have this 50MB log file and I'm not sure what's in it. Can you help me understand its structure?" assistant: "I'll use the file-content-analyzer agent to sample and analyze your log file to create a comprehensive overview of its contents and structure."</example> <example>Context: User is working with a large codebase file and needs a quick overview. user: "This Python file is 2000 lines long. Can you give me a breakdown of what's in it?" assistant: "Let me use the file-content-analyzer agent to sample this large Python file and create a table of contents showing its structure, classes, functions, and key sections."</example>
+description: "Use this agent when you need to analyze large files to understand their structure, content type, and organization. Examples: <example>Context: User has a large log file and wants to understand its structure before processing it. user: \"I have this 50MB log file and I'm not sure what's in it. Can you help me understand its structure?\" assistant: \"I'll use the file-content-analyzer agent to sample and analyze your log file to create a comprehensive overview of its contents and structure.\"</example> <example>Context: User is working with a large codebase file and needs a quick overview. user: \"This Python file is 2000 lines long. Can you give me a breakdown of what's in it?\" assistant: \"Let me use the file-content-analyzer agent to sample this large Python file and create a table of contents showing its structure, classes, functions, and key sections.\"</example>"
+author: zcc
+version: 1.0.0
+tags: []
+dependencies: []
 tools: Glob, Grep, LS, Read, WebFetch, TodoWrite, WebSearch, BashOutput, KillBash
 model: haiku
 ---

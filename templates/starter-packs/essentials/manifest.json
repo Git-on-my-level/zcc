@@ -1,0 +1,109 @@
+{
+  "name": "essentials",
+  "version": "1.0.0",
+  "description": "Essential zcc setup with core modes, workflows, and hooks for general development",
+  "author": "zcc",
+  "tags": ["core", "essentials", "general", "starter"],
+  "category": "general",
+  "mementoProtocolVersion": "1.0.0",
+  "components": {
+    "modes": [
+      {
+        "name": "ai-debt-maintainer",
+        "required": true
+      },
+      {
+        "name": "architect",
+        "required": true
+      },
+      {
+        "name": "autonomous-project-manager",
+        "required": true
+      },
+      {
+        "name": "engineer",
+        "required": true
+      },
+      {
+        "name": "reviewer",
+        "required": true
+      }
+    ],
+    "workflows": [
+      {
+        "name": "openmemory-setup",
+        "required": true
+      },
+      {
+        "name": "review",
+        "required": true
+      },
+      {
+        "name": "summarize",
+        "required": true
+      }
+    ],
+    "agents": []
+  },
+  "configuration": {
+    "defaultMode": "autonomous-project-manager",
+    "customCommands": {
+      "review": {
+        "description": "Execute code review workflow",
+        "template": "/review [target] - Execute review workflow for [target]"
+      },
+      "summarize": {
+        "description": "Summarize code or documentation",
+        "template": "/summarize [target] - Execute summarize workflow for [target]"
+      },
+      "openmemory": {
+        "description": "Set up OpenMemory integration",
+        "template": "/openmemory - Execute openmemory-setup workflow"
+      }
+    },
+    "projectSettings": {
+      "enableHooks": true,
+      "enableFuzzyMatching": true,
+      "ticketSystem": true
+    }
+  },
+  "hooks": [
+    {
+      "name": "acronym-expander",
+      "enabled": true,
+      "config": {
+        "expandModes": true,
+        "expandWorkflows": false
+      }
+    },
+    {
+      "name": "ast-grep-awareness",
+      "enabled": true,
+      "config": {
+        "autoDetect": true
+      }
+    },
+    {
+      "name": "git-context-loader",
+      "enabled": true,
+      "config": {
+        "includeStatus": true,
+        "includeBranch": true
+      }
+    },
+    {
+      "name": "project-overview",
+      "enabled": true,
+      "config": {
+        "autoTrigger": true
+      }
+    }
+  ],
+  "compatibleWith": ["javascript", "typescript", "python", "java", "go", "rust", "generic"],
+  "postInstall": {
+    "message": "Essential zcc setup complete! 🎉\n\nCore modes installed:\n- `/mode apm` (autonomous-project-manager) - Default project management mode\n- `/mode eng` (engineer) - Implementation and coding focus\n- `/mode arch` (architect) - System design and architecture\n- `/mode rev` (reviewer) - Code review and quality assurance\n- `/mode debt` (ai-debt-maintainer) - Technical debt management\n\nCore workflows:\n- `/review [target]` - Execute code review workflow\n- `/summarize [target]` - Summarize code or documentation\n- `/openmemory` - Set up OpenMemory integration\n\nAll essential hooks are enabled for enhanced Claude Code experience.",
+    "commands": [
+      "zcc config set defaultMode autonomous-project-manager"
+    ]
+  }
+}

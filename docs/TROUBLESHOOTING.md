@@ -45,8 +45,8 @@ node /path/to/zcc/dist/cli.js init
 # Force reinitialize
 zcc init --force
 
-# Or for non-interactive
-zcc init --force --non-interactive
+# Or with a specific pack
+zcc init --force --pack frontend-react
 ```
 
 ---
@@ -163,7 +163,7 @@ zcc ticket finish "name"
 **Problem**: `zcc init` takes too long
 
 **Solutions**:
-1. Use non-interactive mode: `zcc init --non-interactive`
+1. Use a specific pack: `zcc init --pack frontend-react`
 2. Skip optional components initially
 3. Check network connectivity for template downloads
 4. Use local cache if available
@@ -239,5 +239,5 @@ zcc --debug <command>
 
 **Pro Tip**: Most issues can be resolved with:
 ```bash
-zcc init --force --non-interactive
+zcc init --force --pack frontend-react
 ```

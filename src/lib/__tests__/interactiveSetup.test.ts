@@ -1,14 +1,14 @@
 import { InteractiveSetup } from "../interactiveSetup";
-import { ComponentInstaller } from "../componentInstaller";
 import { ConfigManager } from "../configManager";
 import { HookManager } from "../hooks/HookManager";
+import { StarterPackManager } from "../StarterPackManager";
 
 jest.mock("inquirer", () => ({
   prompt: jest.fn(),
 }));
-jest.mock("../componentInstaller");
 jest.mock("../configManager");
 jest.mock("../hooks/HookManager");
+jest.mock("../StarterPackManager");
 jest.mock("../logger", () => ({
   logger: {
     info: jest.fn(),
@@ -18,27 +18,17 @@ jest.mock("../logger", () => ({
     space: jest.fn(),
   },
 }));
-jest.mock("fs", () => ({
-  readFileSync: jest.fn().mockReturnValue(JSON.stringify({
-    name: "Test Hook",
-    description: "Test hook description"
-  }))
-}));
 
 describe("InteractiveSetup", () => {
   let interactiveSetup: InteractiveSetup;
-  let mockInstaller: jest.Mocked<ComponentInstaller>;
   let mockConfigManager: jest.Mocked<ConfigManager>;
   let mockHookManager: jest.Mocked<HookManager>;
+  let mockStarterPackManager: jest.Mocked<StarterPackManager>;
   const mockProjectRoot = "/test/project";
 
   beforeEach(() => {
     jest.clearAllMocks();
 
-    mockInstaller = {
-      installComponent: jest.fn(),
-      listAvailableComponents: jest.fn(),
-    } as any;
 
     mockConfigManager = {
       save: jest.fn(),
@@ -49,15 +39,24 @@ describe("InteractiveSetup", () => {
       createHookFromTemplate: jest.fn(),
     } as any;
 
-    (
-      ComponentInstaller as jest.MockedClass<typeof ComponentInstaller>
-    ).mockImplementation(() => mockInstaller);
+    mockStarterPackManager = {
+      installPack: jest.fn().mockResolvedValue({
+        success: true,
+        installed: { modes: [], workflows: [], agents: [], hooks: [] },
+        skipped: { modes: [], workflows: [], agents: [], hooks: [] },
+        errors: [],
+      }),
+    } as any;
+
     (
       ConfigManager as jest.MockedClass<typeof ConfigManager>
     ).mockImplementation(() => mockConfigManager);
     (
       HookManager as jest.MockedClass<typeof HookManager>
     ).mockImplementation(() => mockHookManager);
+    (
+      StarterPackManager as jest.MockedClass<typeof StarterPackManager>
+    ).mockImplementation(() => mockStarterPackManager);
 
     interactiveSetup = new InteractiveSetup(mockProjectRoot);
   });
@@ -78,51 +77,72 @@ describe("InteractiveSetup", () => {
 
 
   describe("applySetup", () => {
-    it("should install all selected components", async () => {
+    it("should install starter pack and save config", async () => {
       const setupOptions = {
-        selectedModes: ["architect", "engineer"],
-        selectedWorkflows: ["review", "refactor"],
+        selectedPack: "essentials",
+        installScope: "project" as const,
         defaultMode: "architect",
+        addToGitignore: true,
+        force: false,
       };
+
+      mockStarterPackManager.installPack.mockResolvedValueOnce({
+        success: true,
+        installed: { 
+          modes: ["architect", "engineer"], 
+          workflows: ["review", "refactor"], 
+          agents: [],
+          hooks: ["git-context-loader"]
+        },
+        skipped: { modes: [], workflows: [], agents: [], hooks: [] },
+        errors: [],
+      });
 
       await interactiveSetup.applySetup(setupOptions);
 
-      // Ensure installComponent called for all selected components (order or extra args don't matter)
-      const calls = mockInstaller.installComponent.mock.calls.map((call) => [
-        call[0],
-        call[1],
-      ]);
-      expect(calls).toEqual(
-        expect.arrayContaining([
-          ["mode", "architect"],
-          ["mode", "engineer"],
-          ["workflow", "review"],
-          ["workflow", "refactor"],
-        ])
-      );
-
+      expect(mockStarterPackManager.installPack).toHaveBeenCalledWith("essentials", {
+        force: false,
+      });
 
       expect(mockConfigManager.save).toHaveBeenCalledWith({
         defaultMode: "architect",
-        components: {
-          modes: ["architect", "engineer"],
-          workflows: ["review", "refactor"],
-          agents: [],
-        },
+        installedPack: "essentials",
+        installScope: "project",
       });
     });
 
-
-    it("should skip config save when no components selected", async () => {
+    it("should handle empty setup without installing pack", async () => {
       const setupOptions = {
-        selectedModes: [],
-        selectedWorkflows: [],
+        selectedPack: undefined,
+        installScope: "project" as const,
         defaultMode: undefined,
+        addToGitignore: false,
+        force: false,
       };
 
       await interactiveSetup.applySetup(setupOptions);
 
+      expect(mockStarterPackManager.installPack).not.toHaveBeenCalled();
       expect(mockConfigManager.save).not.toHaveBeenCalled();
+    });
+
+    it("should throw error when pack installation fails", async () => {
+      const setupOptions = {
+        selectedPack: "essentials",
+        installScope: "project" as const,
+        defaultMode: "architect",
+      };
+
+      mockStarterPackManager.installPack.mockResolvedValueOnce({
+        success: false,
+        installed: { modes: [], workflows: [], agents: [], hooks: [] },
+        skipped: { modes: [], workflows: [], agents: [], hooks: [] },
+        errors: ["Pack not found"],
+      });
+
+      await expect(interactiveSetup.applySetup(setupOptions)).rejects.toThrow(
+        "Failed to install starter pack: Pack not found"
+      );
     });
   });
 });

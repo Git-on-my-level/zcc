@@ -1,8 +1,17 @@
 {
   "packs": {
+    "essentials": {
+      "version": "1.0.0",
+      "installedAt": "2025-09-06T16:40:56.797Z",
+      "source": {
+        "name": "local",
+        "type": "local",
+        "path": "/Users/dazheng/workspace/zcc/templates/starter-packs"
+      }
+    },
     "frontend-react": {
       "version": "1.0.0",
-      "installedAt": "2025-09-05T08:05:12.755Z",
+      "installedAt": "2025-09-06T16:40:46.657Z",
       "source": {
         "name": "local",
         "type": "local",

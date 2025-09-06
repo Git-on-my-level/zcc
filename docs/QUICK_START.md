@@ -26,7 +26,7 @@ zcc init
 # If you're developing zcc itself
 cd /path/to/zcc
 npm run build
-npm run dev init -- --force --non-interactive
+npm run dev init -- --force --pack frontend-react
 ```
 
 ## Your First 5 Minutes
@@ -37,12 +37,12 @@ cd your-project
 npx zcc init
 ```
 
-You'll be prompted to select:
-- **Modes**: AI personalities (architect, engineer, reviewer)
-- **Workflows**: Reusable procedures (review, summarize)
-- **Agents**: Specialized tools (research, analysis)
+You'll be prompted to select a **Starter Pack** - a curated bundle of modes, workflows, and agents that work together seamlessly:
+- **essentials**: Core setup with fundamental modes and workflows for general development
+- **frontend-react**: Complete React development setup with specialized components
+- **advanced-code-refactoring**: AST-grep focused refactoring tools
 
-**Tip**: Press `space` to select, `a` to toggle all, `enter` to proceed
+**Tip**: Use arrow keys to navigate, `enter` to select a pack
 
 ### 2. Try Mode Switching (1 minute)
 ```bash
@@ -156,7 +156,7 @@ zcc validate                # Check component health
 
 ---
 
-**Pro Tip**: The `--non-interactive` flag is perfect for CI/CD:
-```bash
-zcc init --force --non-interactive
-```
+**Pro Tips**: 
+- For CI/CD or automated setups: `zcc init --pack frontend-react`
+- For existing projects: `zcc init --force --pack essentials` 
+- Interactive mode shows pack selection: `zcc init`

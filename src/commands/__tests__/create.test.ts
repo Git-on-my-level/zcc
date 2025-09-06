@@ -1,12 +1,18 @@
 import { createCommand } from '../create';
 import { ZccCore } from '../../lib/ZccCore';
 import { logger } from '../../lib/logger';
+import { cliContext, isNonInteractive } from '../../lib/context';
 import inquirer from 'inquirer';
 import { createTestFileSystem } from '../../lib/testing';
 import * as fs from 'fs';
 import * as componentValidator from '../../lib/utils/componentValidator';
 
 jest.mock('../../lib/ZccCore');
+jest.mock('../../lib/context', () => ({
+  ...jest.requireActual('../../lib/context'),
+  isNonInteractive: jest.fn().mockReturnValue(false),
+  isForce: jest.fn().mockReturnValue(false),
+}));
 jest.mock('../../lib/logger', () => ({
   logger: {
     info: jest.fn(),
@@ -37,6 +43,8 @@ describe('Create Command', () => {
   let mockInquirer: jest.Mocked<typeof inquirer>;
   let mockFs: jest.Mocked<typeof fs>;
   let mockValidator: jest.Mocked<typeof componentValidator>;
+  let mockContext: jest.Mocked<typeof cliContext>;
+  const mockIsNonInteractive = isNonInteractive as jest.MockedFunction<typeof isNonInteractive>;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -75,6 +83,7 @@ describe('Create Command', () => {
     
     mockInquirer = inquirer as jest.Mocked<typeof inquirer>;
     mockValidator = componentValidator as jest.Mocked<typeof componentValidator>;
+    mockContext = cliContext as jest.Mocked<typeof cliContext>;
     
     // Setup validation mocks
     mockValidator.validateComponent.mockReturnValue({
@@ -82,6 +91,10 @@ describe('Create Command', () => {
       issues: []
     });
     mockValidator.formatValidationIssues.mockReturnValue([]);
+
+    // Setup context mocks
+    mockContext.isNonInteractive = jest.fn().mockReturnValue(false);
+    mockContext.isForce = jest.fn().mockReturnValue(false);
 
     // Mock exit to prevent test termination
     originalExit = process.exit;
@@ -312,9 +325,10 @@ describe('Create Command', () => {
   describe('non-interactive mode', () => {
     it.skip('should create component with defaults in non-interactive mode', async () => {
       // Skipping - test passes individually but fails in suite due to mock state issues
+      mockContext.isNonInteractive.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue('{}'); // package.json
 
-      await createCommand.parseAsync(['mode', 'auto-mode', '--non-interactive'], { from: 'user' });
+      await createCommand.parseAsync(['mode', 'auto-mode'], { from: 'user' });
 
       expect(mockInquirer.prompt).not.toHaveBeenCalled();
       // Component should be created with default values
@@ -324,7 +338,9 @@ describe('Create Command', () => {
     });
 
     it('should error if name not provided in non-interactive mode', async () => {
-      await createCommand.parseAsync(['mode', '--non-interactive'], { from: 'user' });
+      mockIsNonInteractive.mockReturnValue(true);
+      
+      await createCommand.parseAsync(['mode'], { from: 'user' });
 
       expect(logger.error).toHaveBeenCalledWith('Component name is required in non-interactive mode');
       expect(process.exit).toHaveBeenCalledWith(1);

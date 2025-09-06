@@ -1,79 +1,10 @@
 {
   "version": "1.0.0",
-  "created": "2025-07-31T15:28:41.479Z",
+  "created": "2025-09-06T16:25:23.176Z",
   "components": {
-    "modes": [
-      "reviewer",
-      "autonomous-project-manager",
-      "ai-debt-maintainer",
-      "architect",
-      "engineer"
-    ],
-    "workflows": [
-      "summarize",
-      "review",
-      "openmemory-setup"
-    ],
+    "modes": [],
+    "workflows": [],
     "integrations": [],
-    "updated": "2025-09-05T11:57:57.009Z",
-    "agents": [
-      "claude-code-research",
-      "session-summarizer",
-      "ticket-finder"
-    ]
-  },
-  "versions": {
-    "modes": {
-      "reviewer": {
-        "name": "reviewer",
-        "version": "1.0.0",
-        "hash": "3b1d50669f3ad928148936d02fb6d7ee0686b554c4f57d840ced9b2c34440b3c",
-        "lastUpdated": "2025-07-31T15:35:24.492Z"
-      },
-      "autonomous-project-manager": {
-        "name": "autonomous-project-manager",
-        "version": "1.0.0",
-        "hash": "b135341d90511253eede6c3debce78803b644490757486f6d46dc96aba412f5d",
-        "lastUpdated": "2025-08-01T07:50:50.408Z"
-      },
-      "ai-debt-maintainer": {
-        "name": "ai-debt-maintainer",
-        "version": "1.0.0",
-        "hash": "b7be1484117cf261e3e50a6befde0797b7d99c2fd55f95df150a562694d13508",
-        "lastUpdated": "2025-08-01T07:50:50.410Z"
-      },
-      "architect": {
-        "name": "architect",
-        "version": "1.0.0",
-        "hash": "fcb860c3bf2b2de5130e25f030a18d16e752cdd01b594c4da874ddec7fc26690",
-        "lastUpdated": "2025-08-01T07:50:50.411Z"
-      },
-      "engineer": {
-        "name": "engineer",
-        "version": "1.0.0",
-        "hash": "02a6fd6122a64234a794869b45524e220670f908bceed286cc576458506812f1",
-        "lastUpdated": "2025-08-01T07:50:50.411Z"
-      }
-    },
-    "workflows": {
-      "summarize": {
-        "name": "summarize",
-        "version": "1.0.0",
-        "hash": "7c88d97a25097708052c15d71c2d6c2bb5bc9aa86cfcc19eb786287da6ebd08f",
-        "lastUpdated": "2025-07-31T15:35:24.494Z"
-      },
-      "review": {
-        "name": "review",
-        "version": "1.0.0",
-        "hash": "4158ca7373a0baed2881a5b7adb5c85ab9c7d98e4613ba3d2eeeba824c63e3a8",
-        "lastUpdated": "2025-07-31T15:35:24.494Z"
-      },
-      "openmemory-setup": {
-        "name": "openmemory-setup",
-        "version": "1.0.0",
-        "hash": "5ab0d861b6804c59767e2387219f3c02f1ff7336cc3a4f939a62c3e40be77d06",
-        "lastUpdated": "2025-08-01T07:50:50.412Z"
-      }
-    }
+    "agents": []
   }
 }

@@ -4,10 +4,8 @@ import { HookManager } from "../../lib/hooks/HookManager";
 import { InteractiveSetup } from "../../lib/interactiveSetup";
 import { CommandGenerator } from "../../lib/commandGenerator";
 import { StarterPackManager } from "../../lib/StarterPackManager";
-import { ComponentInstaller } from "../../lib/componentInstaller";
 import { logger } from "../../lib/logger";
 import { createTestFileSystem } from "../../lib/testing";
-import * as fs from "fs";
 import inquirer from "inquirer";
 jest.mock("fs");
 jest.mock("../../lib/directoryManager");
@@ -15,7 +13,6 @@ jest.mock("../../lib/hooks/HookManager");
 jest.mock("../../lib/interactiveSetup");
 jest.mock("../../lib/commandGenerator");
 jest.mock("../../lib/StarterPackManager");
-jest.mock("../../lib/componentInstaller");
 jest.mock("../../lib/logger", () => ({
   logger: {
     info: jest.fn(),
@@ -48,15 +45,6 @@ class MockFactory {
     } as any;
   }
 
-  static createComponentInstaller(): jest.Mocked<ComponentInstaller> {
-    return {
-      listAvailableComponents: jest.fn().mockResolvedValue({
-        modes: [{ name: 'architect', description: 'Architect mode' }, { name: 'engineer', description: 'Engineer mode' }],
-        workflows: [{ name: 'review', description: 'Code review workflow' }],
-        agents: [{ name: 'claude-code-research', description: 'Research agent' }]
-      })
-    } as any;
-  }
 
   static createInteractiveSetup(): jest.Mocked<InteractiveSetup> {
     return {
@@ -96,9 +84,7 @@ describe("Init Command", () => {
   let mockInteractiveSetup: jest.Mocked<InteractiveSetup>;
   let mockCommandGenerator: jest.Mocked<CommandGenerator>;
   let mockStarterPackManager: jest.Mocked<StarterPackManager>;
-  let mockComponentInstaller: jest.Mocked<ComponentInstaller>;
   let originalExit: any;
-  let testFs: any;
   
   // Reference to the mocked inquirer
   const mockInquirer = inquirer as jest.Mocked<typeof inquirer>;
@@ -128,7 +114,6 @@ describe("Init Command", () => {
     mockInteractiveSetup = MockFactory.createInteractiveSetup();
     mockCommandGenerator = MockFactory.createCommandGenerator();
     mockStarterPackManager = MockFactory.createStarterPackManager();
-    mockComponentInstaller = MockFactory.createComponentInstaller();
 
     // Apply fresh mock implementations to constructors
     (
@@ -146,22 +131,21 @@ describe("Init Command", () => {
     (
       StarterPackManager as jest.MockedClass<typeof StarterPackManager>
     ).mockImplementation(() => mockStarterPackManager);
-    (
-      ComponentInstaller as jest.MockedClass<typeof ComponentInstaller>
-    ).mockImplementation(() => mockComponentInstaller);
 
     // Reset inquirer completely with fresh implementation
     mockInquirer.prompt.mockReset();
     mockInquirer.prompt.mockResolvedValue({ selectedPack: null });
 
-    // Create fresh test filesystem for each test
-    testFs = await createTestFileSystem({
+    // Test filesystem not needed for current tests
+    await createTestFileSystem({
       '/project/.zcc/config.json': JSON.stringify({ version: '1.0.0' }, null, 2),
       '/project/package.json': JSON.stringify({ name: 'test-project' }, null, 2)
     });
 
     // Mock process.exit fresh for each test
     process.exit = jest.fn() as any;
+    // Reset process.exitCode
+    process.exitCode = 0;
 
     // CRITICAL: Reset commander.js internal state to prevent option parsing contamination
     // More comprehensive reset of commander.js state
@@ -192,16 +176,15 @@ describe("Init Command", () => {
   });
 
   describe("successful initialization", () => {
-    it("should initialize with non-interactive setup", async () => {
+    it("should initialize with gitignore option", async () => {
       mockDirManager.isInitialized.mockReturnValue(false);
+      mockInteractiveSetup.run.mockResolvedValue({ addToGitignore: false });
       
-      await initCommand.parseAsync(["node", "test", "--non-interactive", "--gitignore"]);
+      await initCommand.parseAsync(["node", "test", "--gitignore"]);
 
       expect(mockDirManager.initializeStructure).toHaveBeenCalled();
       expect(mockDirManager.ensureGitignore).toHaveBeenCalled();
-      // In non-interactive mode, no components are installed
-      expect(mockInteractiveSetup.run).not.toHaveBeenCalled();
-      expect(mockInteractiveSetup.applySetup).not.toHaveBeenCalled();
+      expect(mockInteractiveSetup.run).toHaveBeenCalled();
       expect(mockHookManager.initialize).toHaveBeenCalled();
       expect(logger.success).toHaveBeenCalledWith(
         expect.stringContaining("zcc initialized successfully")
@@ -210,134 +193,97 @@ describe("Init Command", () => {
 
     it("should generate hook infrastructure", async () => {
       mockDirManager.isInitialized.mockReturnValue(false);
-      await initCommand.parseAsync(["node", "test", "--non-interactive"]);
+      mockInteractiveSetup.run.mockResolvedValue({});
+      await initCommand.parseAsync(["node", "test"]);
 
       expect(mockHookManager.initialize).toHaveBeenCalled();
     });
 
-    it("should install components specified via CLI flags", async () => {
+    it("should install starter pack via --pack flag", async () => {
       mockDirManager.isInitialized.mockReturnValue(false);
-
-
-      await initCommand.parseAsync([
-        "node", 
-        "test", 
-        "--non-interactive",
-        "--modes", "engineer,reviewer",
-        "--workflows", "summarize",
-        "--default-mode", "engineer"
-      ]);
-
-      expect(mockInteractiveSetup.applySetup).toHaveBeenCalledWith(
-        expect.objectContaining({
-          selectedModes: ["engineer", "reviewer"],
-          selectedWorkflows: ["summarize"],
-          selectedHooks: expect.any(Array), // Can be empty or contain hooks
-          defaultMode: "engineer"
-        })
-      );
-    });
-
-    it("should install all recommended components with --all-recommended", async () => {
-      mockDirManager.isInitialized.mockReturnValue(false);
-
-      await initCommand.parseAsync([
-        "node", 
-        "test", 
-        "--non-interactive",
-        "--all-recommended"
-      ]);
-
-      // Note: Without project detection, --all-recommended won't have components to install
-      // This test now verifies the command runs successfully without errors
-    });
-
-    it("should read configuration from file", async () => {
-      mockDirManager.isInitialized.mockReturnValue(false);
-
-      // Write config file to test filesystem and mock fs.readFileSync to return it
-      const configContent = JSON.stringify({
-        modes: ["architect", "engineer"],
-        workflows: ["review"],
-        defaultMode: "architect",
-        addToGitignore: true
-      }, null, 2);
-      
-      await testFs.writeFile('/test-config.json', configContent);
-      
-      // Mock fs.readFileSync to return the config content for any path ending with 'test-config.json'
-      jest.spyOn(fs, 'readFileSync').mockImplementation((path: any) => {
-        if (path.toString().endsWith('test-config.json')) {
-          return configContent;
-        }
-        throw new Error(`File not found: ${path}`);
+      mockStarterPackManager.installPack.mockResolvedValue({
+        success: true,
+        installed: { modes: ["engineer"], workflows: ["review"], agents: [], hooks: [] },
+        skipped: { modes: [], workflows: [], agents: [], hooks: [] },
+        errors: []
       });
 
       await initCommand.parseAsync([
         "node", 
         "test", 
-        "--non-interactive",
-        "--config", "test-config.json"
+        "--pack", "frontend-react"
       ]);
 
-      // Verify the configuration file exists in test filesystem
-      const configExists = await testFs.exists('/test-config.json');
-      expect(configExists).toBe(true);
-      
-      // Verify that the init completed successfully
-      expect(logger.success).toHaveBeenCalledWith(
-        expect.stringContaining("zcc initialized successfully")
+      expect(mockStarterPackManager.installPack).toHaveBeenCalledWith(
+        "frontend-react",
+        expect.objectContaining({ force: false, interactive: false })
       );
-      
-      // Verify gitignore was updated based on config
-      expect(mockDirManager.ensureGitignore).toHaveBeenCalled();
-      
-      // If components were selected, verify they were installed
-      if (mockInteractiveSetup.applySetup.mock.calls.length > 0) {
-        expect(mockInteractiveSetup.applySetup).toHaveBeenCalledWith(
-          expect.objectContaining({
-            selectedModes: expect.arrayContaining(["architect", "engineer"]),
-            selectedWorkflows: expect.arrayContaining(["review"]),
-            defaultMode: "architect"
-          })
-        );
-      }
+      expect(mockDirManager.initializeStructure).toHaveBeenCalled();
+      expect(mockHookManager.initialize).toHaveBeenCalled();
     });
 
-    it("should read configuration from environment variables", async () => {
+    it("should run interactive setup when no pack specified", async () => {
       mockDirManager.isInitialized.mockReturnValue(false);
+      mockInteractiveSetup.run.mockResolvedValue({
+        selectedPack: "frontend-react"
+      });
+      mockInteractiveSetup.applySetup.mockResolvedValue(undefined);
 
-      // Set environment variables
-      process.env.ZCC_MODES = "engineer,reviewer";
-      process.env.ZCC_WORKFLOWS = "summarize,review";
-      process.env.ZCC_DEFAULT_MODE = "reviewer";
+      await initCommand.parseAsync([
+        "node", 
+        "test"
+      ]);
+
+      expect(mockInteractiveSetup.run).toHaveBeenCalled();
+      expect(mockInteractiveSetup.applySetup).toHaveBeenCalledWith(
+        expect.objectContaining({
+          selectedPack: "frontend-react",
+          force: false
+        })
+      );
+    });
+
+    it("should handle pack installation failure", async () => {
+      mockDirManager.isInitialized.mockReturnValue(false);
+      mockStarterPackManager.installPack.mockResolvedValue({
+        success: false,
+        installed: { modes: [], workflows: [], agents: [], hooks: [] },
+        skipped: { modes: [], workflows: [], agents: [], hooks: [] },
+        errors: ["Pack 'invalid-pack' not found"]
+      });
 
       await initCommand.parseAsync([
         "node", 
         "test", 
-        "--non-interactive"
+        "--pack", "invalid-pack"
       ]);
 
-      // Verify that the init completed successfully
-      expect(logger.success).toHaveBeenCalledWith(
-        expect.stringContaining("zcc initialized successfully")
-      );
-      
-      // If components were selected, verify they were installed
-      if (mockInteractiveSetup.applySetup.mock.calls.length > 0) {
-        expect(mockInteractiveSetup.applySetup).toHaveBeenCalledWith(
-          expect.objectContaining({
-            selectedModes: expect.arrayContaining(["engineer", "reviewer"]),
-            selectedWorkflows: expect.arrayContaining(["summarize", "review"]),
-            defaultMode: "reviewer"
-          })
-        );
-      }
+      expect(logger.error).toHaveBeenCalledWith("Starter pack installation failed:");
+      expect(logger.error).toHaveBeenCalledWith("  Pack 'invalid-pack' not found");
+      expect(process.exitCode).toBe(1);
+    });
 
-      // Clean up environment variables
-      delete process.env.ZCC_MODES;
-      delete process.env.ZCC_WORKFLOWS;
-      delete process.env.ZCC_DEFAULT_MODE;
+    it("should combine --pack with --force flag", async () => {
+      mockDirManager.isInitialized.mockReturnValue(true); // Already initialized
+      mockStarterPackManager.installPack.mockResolvedValue({
+        success: true,
+        installed: { modes: ["engineer"], workflows: [], agents: [], hooks: [] },
+        skipped: { modes: [], workflows: [], agents: [], hooks: [] },
+        errors: []
+      });
+
+      await initCommand.parseAsync([
+        "node", 
+        "test", 
+        "--force",
+        "--pack", "frontend-react"
+      ]);
+
+      expect(mockStarterPackManager.installPack).toHaveBeenCalledWith(
+        "frontend-react",
+        expect.objectContaining({ force: true, interactive: false })
+      );
+      expect(mockDirManager.initializeStructure).toHaveBeenCalledWith(true);
     });
   });
 
@@ -357,8 +303,9 @@ describe("Init Command", () => {
 
     it("should reinitialize with force flag", async () => {
       mockDirManager.isInitialized.mockReturnValue(true);
+      mockInteractiveSetup.run.mockResolvedValue({});
 
-      await initCommand.parseAsync(["node", "test", "--force", "--non-interactive"]);
+      await initCommand.parseAsync(["node", "test", "--force"]);
 
       expect(logger.info).toHaveBeenCalledWith(
         "Initializing zcc..."
@@ -379,7 +326,7 @@ describe("Init Command", () => {
         "Failed to initialize zcc:",
         expect.any(Error)
       );
-      expect(process.exit).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
     });
   });
 
@@ -391,13 +338,7 @@ describe("Init Command", () => {
       // TODO: Update this test to properly mock dynamic imports
     });
 
-    it("should handle global initialization with non-interactive mode", async () => {
-      // Skip this test for now as dynamic import mocking is complex
-      // The global functionality is tested in other tests
-      expect(true).toBe(true); // Placeholder
-    });
-
-    it("should handle global initialization errors gracefully", async () => {
+    it("should handle global initialization", async () => {
       // Skip this test for now as dynamic import mocking is complex
       // The global functionality is tested in other tests
       expect(true).toBe(true); // Placeholder
@@ -410,26 +351,9 @@ describe("Init Command", () => {
       mockDirManager.isInitialized.mockReturnValue(false);
     };
 
-    it("should install starter pack with non-interactive mode", async () => {
+    it("should install starter pack with --pack flag", async () => {
       setupStarterPackMocks();
       
-      
-      const mockPack = {
-        manifest: {
-          name: "frontend-pack",
-          version: "1.0.0",
-          description: "Frontend development pack",
-          author: "test",
-          components: {
-            modes: [{ name: "engineer", required: true }],
-            workflows: [{ name: "review", required: true }]
-          }
-        },
-        path: "/path/to/pack",
-        componentsPath: "/path/to/pack/components"
-      };
-
-      mockStarterPackManager.loadPack.mockResolvedValue(mockPack);
       mockStarterPackManager.installPack.mockResolvedValue(createPackInstallResult({
         installed: { modes: ["engineer"], workflows: ["review"], agents: [], hooks: [] },
         postInstallMessage: "Pack installed successfully!"
@@ -438,206 +362,83 @@ describe("Init Command", () => {
       await initCommand.parseAsync([
         "node", 
         "test", 
-        "--non-interactive",
-        "--starter-pack", "frontend-pack"
+        "--pack", "frontend-pack"
       ]);
 
-      expect(mockStarterPackManager.loadPack).toHaveBeenCalledWith("frontend-pack");
       expect(mockStarterPackManager.installPack).toHaveBeenCalledWith(
         "frontend-pack",
-        expect.objectContaining({ force: undefined, interactive: false })
+        expect.objectContaining({ force: false, interactive: false })
       );
-      expect(mockInteractiveSetup.applySetup).toHaveBeenCalledWith(
-        expect.objectContaining({
-          selectedModes: ["engineer"],
-          selectedWorkflows: ["review"]
-        })
-      );
+      expect(mockDirManager.initializeStructure).toHaveBeenCalled();
+      expect(mockHookManager.initialize).toHaveBeenCalled();
       expect(logger.success).toHaveBeenCalledWith(
         "Starter pack 'frontend-pack' installed successfully"
       );
     });
 
-    it("should show interactive pack selection when --starter-pack flag used without value", async () => {
+    it("should show interactive pack selection in default mode", async () => {
       setupStarterPackMocks();
       
-      const mockPacks = [
-        {
-          manifest: {
-            name: "frontend-pack",
-            description: "Frontend development pack",
-            version: "1.0.0",
-            author: "test",
-            components: { modes: [], workflows: [], agents: [] }
-          },
-          path: "/path/to/pack1",
-          componentsPath: "/path/to/pack1/components"
-        },
-        {
-          manifest: {
-            name: "backend-pack", 
-            description: "Backend development pack",
-            version: "1.0.0",
-            author: "test",
-            components: { modes: [], workflows: [], agents: [] }
-          },
-          path: "/path/to/pack2",
-          componentsPath: "/path/to/pack2/components"
-        }
-      ];
+      mockInteractiveSetup.run.mockResolvedValue({
+        selectedPack: "frontend-pack"
+      });
+      mockInteractiveSetup.applySetup.mockResolvedValue(undefined);
 
-      mockStarterPackManager.listPacks.mockResolvedValue(mockPacks);
+      await initCommand.parseAsync(["node", "test"]);
 
-      // Configure the mock inquirer to return the first pack
-      mockInquirer.prompt.mockResolvedValue({ selectedPack: "frontend-pack" });
-
-      const mockPack = mockPacks[0];
-      mockStarterPackManager.loadPack.mockResolvedValue(mockPack);
-      mockStarterPackManager.installPack.mockResolvedValue(createPackInstallResult());
-
-      await initCommand.parseAsync(["node", "test", "--starter-pack"]);
-
-      expect(mockStarterPackManager.listPacks).toHaveBeenCalled();
-      expect(mockInquirer.prompt).toHaveBeenCalledWith([
-        expect.objectContaining({
-          type: 'list',
-          name: 'selectedPack',
-          message: 'Select a starter pack to install:',
-          choices: expect.arrayContaining([
-            { name: 'Skip starter pack installation', value: null },
-            { name: 'frontend-pack - Frontend development pack', value: 'frontend-pack' },
-            { name: 'backend-pack - Backend development pack', value: 'backend-pack' }
-          ])
-        })
-      ]);
-    });
-
-    it("should handle user skipping starter pack selection", async () => {
-      setupStarterPackMocks();
-      
-      const mockPacks = [
-        {
-          manifest: {
-            name: "frontend-pack",
-            description: "Frontend development pack",
-            version: "1.0.0",
-            author: "test",
-            components: { modes: [], workflows: [], agents: [] }
-          },
-          path: "/path/to/pack",
-          componentsPath: "/path/to/pack/components"
-        }
-      ];
-
-      mockStarterPackManager.listPacks.mockResolvedValue(mockPacks);
-
-      // Configure the mock inquirer to skip (return null) - this is already the default
-
-      await initCommand.parseAsync(["node", "test", "--starter-pack"]);
-
-      expect(mockStarterPackManager.listPacks).toHaveBeenCalled();
-      expect(mockStarterPackManager.loadPack).not.toHaveBeenCalled();
-      expect(mockStarterPackManager.installPack).not.toHaveBeenCalled();
-    });
-
-    it("should combine starter pack components with CLI specified components", async () => {
-      setupStarterPackMocks();
-      
-      const mockPack = {
-        manifest: {
-          name: "frontend-pack",
-          version: "1.0.0",
-          description: "Frontend development pack",
-          author: "test",
-          components: {
-            modes: [{ name: "engineer", required: true }],
-            workflows: [{ name: "review", required: true }]
-          },
-          configuration: {
-            defaultMode: "engineer"
-          }
-        },
-        path: "/path/to/pack",
-        componentsPath: "/path/to/pack/components"
-      };
-
-      mockStarterPackManager.loadPack.mockResolvedValue(mockPack);
-      mockStarterPackManager.installPack.mockResolvedValue(createPackInstallResult({
-        installed: { modes: ["engineer"], workflows: ["review"], agents: [] }
-      }));
-
-      await initCommand.parseAsync([
-        "node", 
-        "test", 
-        "--non-interactive",
-        "--starter-pack", "frontend-pack",
-        "--modes", "reviewer,architect",
-        "--workflows", "summarize"
-      ]);
-
+      expect(mockInteractiveSetup.run).toHaveBeenCalled();
       expect(mockInteractiveSetup.applySetup).toHaveBeenCalledWith(
         expect.objectContaining({
-          selectedModes: expect.arrayContaining(["reviewer", "architect", "engineer"]),
-          selectedWorkflows: expect.arrayContaining(["summarize", "review"]),
-          defaultMode: "engineer"
+          selectedPack: "frontend-pack",
+          force: false
         })
       );
     });
 
-    it("should handle starter pack installation failure gracefully", async () => {
+    it("should handle user not selecting a pack in interactive setup", async () => {
       setupStarterPackMocks();
       
-      const mockPack = {
-        manifest: {
-          name: "invalid-pack",
-          version: "1.0.0",
-          description: "Invalid pack",
-          author: "test",
-          components: {
-            modes: [{ name: "non-existent", required: true }]
-          }
-        },
-        path: "/path/to/pack",
-        componentsPath: "/path/to/pack/components"
-      };
+      mockInteractiveSetup.run.mockResolvedValue({});
 
-      mockStarterPackManager.loadPack.mockResolvedValue(mockPack);
+      await initCommand.parseAsync(["node", "test"]);
+
+      expect(mockInteractiveSetup.run).toHaveBeenCalled();
+      expect(mockDirManager.initializeStructure).toHaveBeenCalled();
+      expect(mockHookManager.initialize).toHaveBeenCalled();
+    });
+
+    it("should handle pack with post-install message", async () => {
+      setupStarterPackMocks();
+      
       mockStarterPackManager.installPack.mockResolvedValue(createPackInstallResult({
-        success: false,
-        errors: ["Mode 'non-existent' not found"]
+        installed: { modes: ["engineer"], workflows: ["review"], agents: [], hooks: [] },
+        postInstallMessage: "Welcome to frontend-pack! Use 'mode: engineer' to get started."
       }));
 
       await initCommand.parseAsync([
         "node", 
         "test", 
-        "--non-interactive",
-        "--starter-pack", "invalid-pack"
+        "--pack", "frontend-pack"
       ]);
 
       expect(mockStarterPackManager.installPack).toHaveBeenCalled();
-      // Should still proceed with initialization even if pack fails
-      expect(mockDirManager.initializeStructure).toHaveBeenCalled();
-      expect(logger.success).toHaveBeenCalledWith(
-        expect.stringContaining("zcc initialized successfully")
+      expect(logger.info).toHaveBeenCalledWith("Starter Pack Information:");
+      expect(logger.info).toHaveBeenCalledWith(
+        "Welcome to frontend-pack! Use 'mode: engineer' to get started."
       );
     });
 
-    it("should error in non-interactive mode when starter pack flag provided without value", async () => {
+    it("should run interactive setup when --pack flag has no value", async () => {
       setupStarterPackMocks();
       
-      await initCommand.parseAsync([
-        "node", 
-        "test", 
-        "--non-interactive",
-        "--starter-pack"
-      ]);
-
-      expect(logger.warn).toHaveBeenCalledWith(
-        "--starter-pack requires a pack name in non-interactive mode"
-      );
-      // Should still proceed with initialization
-      expect(mockDirManager.initializeStructure).toHaveBeenCalled();
+      // The --pack flag without a value should trigger interactive setup
+      await initCommand.parseAsync(["node", "test", "--pack"]);
+      
+      // Should run interactive setup (not headless pack installation)
+      expect(mockInteractiveSetup.run).toHaveBeenCalled();
     });
+
+    // Test removed - --non-interactive flag no longer exists
 
     it("should handle starter pack with post-install message", async () => {
       setupStarterPackMocks();
@@ -666,8 +467,7 @@ describe("Init Command", () => {
       await initCommand.parseAsync([
         "node", 
         "test", 
-        "--non-interactive",
-        "--starter-pack", "frontend-pack"
+        "--pack", "frontend-pack"
       ]);
 
       expect(logger.info).toHaveBeenCalledWith("Starter Pack Information:");
@@ -693,65 +493,49 @@ describe("Init Command", () => {
       await initCommand.parseAsync([
         "node", 
         "test", 
-        "--non-interactive",
-        "--starter-pack", "non-existent"
+        "--pack", "non-existent"
       ]);
 
       // The implementation logs starter pack specific errors, not generic init errors
       expect(logger.error).toHaveBeenCalledWith("Starter pack installation failed:");
       expect(logger.error).toHaveBeenCalledWith("  Pack 'non-existent' not found");
-      expect(process.exit).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
     });
 
-    it("should handle empty starter pack list during interactive selection", async () => {
+    it("should handle empty pack selection gracefully", async () => {
       setupStarterPackMocks();
-      
-      mockStarterPackManager.listPacks.mockResolvedValue([]);
+      mockInteractiveSetup.run.mockResolvedValue({});
 
-      await initCommand.parseAsync(["node", "test", "--starter-pack"]);
+      await initCommand.parseAsync(["node", "test"]);
 
-      expect(logger.warn).toHaveBeenCalledWith("No starter packs available.");
+      expect(mockInteractiveSetup.run).toHaveBeenCalled();
       expect(mockDirManager.initializeStructure).toHaveBeenCalled();
     });
 
-    it("should install starter pack components with agents", async () => {
+    it("should install starter pack with multiple component types", async () => {
       setupStarterPackMocks();
       
-      const mockPack = {
-        manifest: {
-          name: "fullstack-pack",
-          version: "1.0.0",
-          description: "Fullstack development pack",
-          author: "test",
-          components: {
-            modes: [{ name: "engineer", required: true }],
-            workflows: [{ name: "review", required: true }],
-            agents: [{ name: "claude-code-research", required: false }]
-          }
-        },
-        path: "/path/to/pack",
-        componentsPath: "/path/to/pack/components"
-      };
-
-      mockStarterPackManager.loadPack.mockResolvedValue(mockPack);
       mockStarterPackManager.installPack.mockResolvedValue(createPackInstallResult({
         installed: { 
           modes: ["engineer"], 
           workflows: ["review"], 
-          agents: ["claude-code-research"] 
+          agents: ["claude-code-research"],
+          hooks: []
         }
       }));
 
       await initCommand.parseAsync([
         "node", 
         "test", 
-        "--non-interactive",
-        "--starter-pack", "fullstack-pack"
+        "--pack", "fullstack-pack"
       ]);
 
-      expect(logger.info).toHaveBeenCalledWith("  Modes: engineer");
-      expect(logger.info).toHaveBeenCalledWith("  Workflows: review");
-      expect(logger.info).toHaveBeenCalledWith("  Agents: claude-code-research");
+      expect(mockStarterPackManager.installPack).toHaveBeenCalledWith(
+        "fullstack-pack",
+        expect.objectContaining({ force: false, interactive: false })
+      );
+      expect(mockDirManager.initializeStructure).toHaveBeenCalled();
+      expect(mockHookManager.initialize).toHaveBeenCalled();
     });
 
     it("should respect force flag when installing starter pack", async () => {
@@ -781,8 +565,7 @@ describe("Init Command", () => {
         "node", 
         "test", 
         "--force",
-        "--non-interactive",
-        "--starter-pack", "test-pack"
+        "--pack", "test-pack"
       ]);
 
       expect(mockStarterPackManager.installPack).toHaveBeenCalledWith(
@@ -791,107 +574,61 @@ describe("Init Command", () => {
       );
     });
 
-    it("should handle starter pack with default mode configuration", async () => {
+    it("should handle starter pack installation successfully", async () => {
       setupStarterPackMocks();
       
-      const mockPack = {
-        manifest: {
-          name: "configured-pack",
-          version: "1.0.0",
-          description: "Pack with default mode",
-          author: "test",
-          components: {
-            modes: [{ name: "architect", required: true }, { name: "engineer", required: true }]
-          },
-          configuration: {
-            defaultMode: "architect"
-          }
-        },
-        path: "/path/to/pack",
-        componentsPath: "/path/to/pack/components"
-      };
-
-      mockStarterPackManager.loadPack.mockResolvedValue(mockPack);
       mockStarterPackManager.installPack.mockResolvedValue(createPackInstallResult({
-        installed: { modes: ["architect", "engineer"], workflows: [], agents: [] }
+        installed: { modes: ["architect", "engineer"], workflows: [], agents: [], hooks: [] }
       }));
 
       await initCommand.parseAsync([
         "node", 
         "test", 
-        "--non-interactive",
-        "--starter-pack", "configured-pack"
+        "--pack", "configured-pack"
       ]);
 
-      expect(mockInteractiveSetup.applySetup).toHaveBeenCalledWith(
-        expect.objectContaining({
-          defaultMode: "architect"
-        })
+      expect(mockStarterPackManager.installPack).toHaveBeenCalledWith(
+        "configured-pack",
+        expect.objectContaining({ force: false, interactive: false })
       );
-      expect(logger.info).toHaveBeenCalledWith(
-        '  - Default mode "architect" will be used when no mode is specified'
+      expect(mockDirManager.initializeStructure).toHaveBeenCalled();
+      expect(mockHookManager.initialize).toHaveBeenCalled();
+      expect(logger.success).toHaveBeenCalledWith(
+        "Starter pack 'configured-pack' installed successfully"
       );
     });
   });
 
-  describe("backwards compatibility", () => {
-    it("should work without starter pack options (existing behavior)", async () => {
+  describe("pack system", () => {
+    it("should work without pack options (interactive setup)", async () => {
       mockDirManager.isInitialized.mockReturnValue(false);
+      mockInteractiveSetup.run.mockResolvedValue({});
 
-      await initCommand.parseAsync([
-        "node", 
-        "test", 
-        "--non-interactive",
-        "--all-recommended"
-      ]);
+      await initCommand.parseAsync(["node", "test"]);
 
-      expect(mockStarterPackManager.listPacks).not.toHaveBeenCalled();
-      expect(mockStarterPackManager.loadPack).not.toHaveBeenCalled();
-      expect(mockStarterPackManager.installPack).not.toHaveBeenCalled();
-      // Note: Without project detection, --all-recommended won't have components to install
-      // This test now verifies the command runs successfully without errors
+      expect(mockInteractiveSetup.run).toHaveBeenCalled();
+      expect(mockDirManager.initializeStructure).toHaveBeenCalled();
+      expect(mockHookManager.initialize).toHaveBeenCalled();
     });
 
-    it("should prioritize CLI flags over starter pack in combined usage", async () => {
-      mockDirManager.isInitialized.mockReturnValue(false);
-
-      const mockPack = {
-        manifest: {
-          name: "test-pack",
-          version: "1.0.0",
-          description: "Test pack",
-          author: "test",
-          components: {
-            modes: [{ name: "engineer", required: true }]
-          },
-          configuration: {
-            defaultMode: "engineer"
-          }
-        },
-        path: "/path/to/pack",
-        componentsPath: "/path/to/pack/components"
-      };
-
-      mockStarterPackManager.loadPack.mockResolvedValue(mockPack);
+    it("should work with pack and force flags combined", async () => {
+      mockDirManager.isInitialized.mockReturnValue(true);
       mockStarterPackManager.installPack.mockResolvedValue(createPackInstallResult({
-        installed: { modes: ["engineer"], workflows: [], agents: [] }
+        installed: { modes: ["engineer"], workflows: [], agents: [], hooks: [] }
       }));
 
       await initCommand.parseAsync([
         "node", 
         "test", 
-        "--non-interactive",
-        "--starter-pack", "test-pack",
-        "--default-mode", "architect", // Override pack's default mode
-        "--modes", "reviewer" // Add additional mode
+        "--force",
+        "--pack", "test-pack"
       ]);
 
-      expect(mockInteractiveSetup.applySetup).toHaveBeenCalledWith(
-        expect.objectContaining({
-          selectedModes: expect.arrayContaining(["reviewer", "engineer"]),
-          defaultMode: "architect" // CLI flag should override pack config
-        })
+      expect(mockStarterPackManager.installPack).toHaveBeenCalledWith(
+        "test-pack",
+        expect.objectContaining({ force: true, interactive: false })
       );
+      expect(mockDirManager.initializeStructure).toHaveBeenCalledWith(true);
     });
   });
 });

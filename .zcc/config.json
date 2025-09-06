@@ -1,18 +1,10 @@
 {
-  "version": "1.0.0",
+  "enableHooks": true,
+  "enableFuzzyMatching": true,
+  "ticketSystem": true,
   "defaultMode": "autonomous-project-manager",
-  "components": {
-    "modes": [
-      "ai-debt-maintainer",
-      "architect",
-      "autonomous-project-manager",
-      "engineer",
-      "reviewer"
-    ],
-    "workflows": [
-      "openmemory-setup",
-      "review",
-      "summarize"
-    ]
-  }
+  "typescript": true,
+  "testFramework": "jest",
+  "stylingApproach": "tailwind",
+  "stateManagement": "context"
 }

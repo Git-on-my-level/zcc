@@ -1,34 +1,26 @@
 import inquirer from 'inquirer';
-import { ComponentInstaller } from './componentInstaller';
 import { ConfigManager } from './configManager';
 import { logger } from './logger';
-import { HookManager } from './hooks/HookManager';
-import { PackagePaths } from './packagePaths';
+import { StarterPackManager } from './StarterPackManager';
 import { FileSystemAdapter, NodeFileSystemAdapter } from './adapters';
 
 export interface SetupOptions {
-  selectedModes: string[];
-  selectedWorkflows: string[];
-  selectedHooks?: string[];
-  selectedAgents?: string[];
+  selectedPack?: string;
+  installScope?: 'global' | 'project';
   defaultMode?: string;
-  skipRecommended?: boolean;
   force?: boolean;
   addToGitignore?: boolean;
-  selectedLanguages?: string[];  // Keep for compatibility
 }
 
 export class InteractiveSetup {
-  private componentInstaller: ComponentInstaller;
   private configManager: ConfigManager;
-  private hookManager: HookManager;
+  private starterPackManager: StarterPackManager;
   private fs: FileSystemAdapter;
 
   constructor(projectRoot: string, fs?: FileSystemAdapter) {
     this.fs = fs || new NodeFileSystemAdapter();
-    this.componentInstaller = new ComponentInstaller(projectRoot, this.fs);
     this.configManager = new ConfigManager(projectRoot, this.fs);
-    this.hookManager = new HookManager(projectRoot, this.fs);
+    this.starterPackManager = new StarterPackManager(projectRoot, this.fs);
   }
 
   /**
@@ -39,18 +31,28 @@ export class InteractiveSetup {
     logger.info('🚀 Welcome to zcc Interactive Setup!');
     logger.space();
 
-    // Select components
-    const componentSelections = await this.selectComponents();
+    // Select starter pack
+    const selectedPack = await this.selectStarterPack();
 
-    // Configure default mode
-    const defaultMode = await this.selectDefaultMode(componentSelections.selectedModes);
+    // Select installation scope
+    const installScope = await this.selectInstallScope();
 
-    // Ask about gitignore
-    const addToGitignore = await this.askGitignoreOption();
+    // Ask about gitignore only if installing for current project
+    let addToGitignore = false;
+    if (installScope === 'project') {
+      addToGitignore = await this.askGitignoreOption();
+    }
+
+    // Get default mode from pack (if applicable)
+    let defaultMode: string | undefined;
+    if (selectedPack && selectedPack !== 'empty') {
+      defaultMode = await this.getPackDefaultMode(selectedPack);
+    }
 
     // Show summary and confirm
     const confirmed = await this.confirmSetup({
-      ...componentSelections,
+      selectedPack,
+      installScope,
       defaultMode,
       addToGitignore
     });
@@ -60,129 +62,91 @@ export class InteractiveSetup {
     }
 
     return {
-      ...componentSelections,
+      selectedPack,
+      installScope,
       defaultMode,
-      addToGitignore,
-      selectedLanguages: []  // Keep for compatibility
+      addToGitignore
     };
   }
 
 
   /**
-   * Select components to install
+   * Select starter pack to install
    */
-  private async selectComponents() {
-    // Get available components
-    const availableComponents = await this.componentInstaller.listAvailableComponents();
-
-    // Select modes - Default to ALL available modes
-    const { selectedModes } = await inquirer.prompt([
-      {
-        type: 'checkbox',
-        name: 'selectedModes',
-        message: 'Select modes (behavioral patterns) to install:',
-        choices: availableComponents.modes.map((mode: any) => ({
-          name: mode.name,
-          value: mode.name,
-          checked: true  // Select all modes by default
-        })),
-        validate: (input: any) => input.length > 0 || 'Please select at least one mode'
-      }
-    ]);
-
-    // Select workflows - Default to ALL available workflows
-    const { selectedWorkflows } = await inquirer.prompt([
-      {
-        type: 'checkbox',
-        name: 'selectedWorkflows',
-        message: 'Select workflows (procedures) to install:',
-        choices: availableComponents.workflows.map((workflow: any) => ({
-          name: workflow.name,
-          value: workflow.name,
-          checked: true  // Select all workflows by default
-        }))
-      }
-    ]);
-
-    // Select hooks - Get available hook templates
-    const availableHooks = await this.hookManager.listTemplates();
-    let selectedHooks: string[] = [];
-    
-    if (availableHooks.length > 0) {
-      // Get template details for better descriptions
-      const hookChoices = [];
-      for (const hookName of availableHooks) {
-        try {
-          const templatePath = this.fs.join(PackagePaths.getTemplatesDir(), 'hooks', `${hookName}.json`);
-          const template = JSON.parse(this.fs.readFileSync(templatePath, 'utf8') as string);
-          hookChoices.push({
-            name: template.name,
-            value: hookName,
-            checked: true // Select all hooks by default
-          });
-        } catch {
-          hookChoices.push({
-            name: hookName,
-            value: hookName,
-            checked: false
-          });
-        }
-      }
-
-      const { hooks } = await inquirer.prompt([
+  private async selectStarterPack(): Promise<string | undefined> {
+    try {
+      // Get available starter packs
+      const availablePacks = await this.starterPackManager.listPacks();
+      
+      // Create choices with descriptions
+      const choices = [
         {
-          type: 'checkbox',
-          name: 'hooks',
-          message: 'Select Claude Code hooks to install:',
-          choices: hookChoices
+          name: 'Empty (no defaults) - Minimal setup with no pre-selected components',
+          value: 'empty'
+        },
+        ...availablePacks.map(pack => ({
+          name: `${pack.manifest.name} - ${pack.manifest.description}`,
+          value: pack.manifest.name
+        }))
+      ];
+
+      const { selectedPack } = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'selectedPack',
+          message: 'Choose a starter pack:',
+          choices,
+          default: 'essentials'
         }
       ]);
-      selectedHooks = hooks;
+
+      return selectedPack === 'empty' ? undefined : selectedPack;
+    } catch (error) {
+      logger.warn(`Failed to load starter packs: ${error}`);
+      logger.info('Proceeding with empty setup...');
+      return undefined;
     }
-
-    // Select agents
-    const { selectedAgents } = await inquirer.prompt([
-      {
-        type: 'checkbox',
-        name: 'selectedAgents',
-        message: 'Select Claude Code agents to install:',
-        choices: availableComponents.agents.map((agent: any) => ({
-          name: `${agent.name} - ${agent.description}`,
-          value: agent.name,
-          checked: false  // Don't select agents by default
-        }))
-      }
-    ]);
-
-    return { selectedModes, selectedWorkflows, selectedHooks, selectedAgents };
   }
 
   /**
-   * Select default mode
+   * Select installation scope (global or project)
    */
-  private async selectDefaultMode(selectedModes: string[]): Promise<string | undefined> {
-    if (selectedModes.length === 0) {
-      return undefined;
-    }
-
-    if (selectedModes.length === 1) {
-      return selectedModes[0];
-    }
-
-    const { defaultMode } = await inquirer.prompt([
+  private async selectInstallScope(): Promise<'global' | 'project'> {
+    const { installScope } = await inquirer.prompt([
       {
         type: 'list',
-        name: 'defaultMode',
-        message: 'Select the default mode to activate:',
+        name: 'installScope',
+        message: 'Where would you like to install zcc?',
         choices: [
-          { name: 'None', value: undefined },
-          ...selectedModes.map(mode => ({ name: mode, value: mode }))
-        ]
+          {
+            name: 'Current project only - Install in .zcc/ directory for this project',
+            value: 'project'
+          },
+          {
+            name: 'Global installation - Install in ~/.zcc/ for all projects',
+            value: 'global'
+          }
+        ],
+        default: 'project'
       }
     ]);
 
-    return defaultMode;
+    return installScope;
   }
+
+  /**
+   * Get default mode from selected pack
+   */
+  private async getPackDefaultMode(packName: string): Promise<string | undefined> {
+    try {
+      const pack = await this.starterPackManager.loadPack(packName);
+      return pack.manifest.configuration?.defaultMode;
+    } catch (error) {
+      logger.warn(`Failed to get default mode from pack '${packName}': ${error}`);
+      return undefined;
+    }
+  }
+
 
   /**
    * Ask about gitignore option
@@ -208,18 +172,23 @@ export class InteractiveSetup {
     logger.space();
     logger.info('📋 Setup Summary:');
     logger.space();
-    logger.info(`Modes: ${options.selectedModes.join(', ') || 'None'}`);
-    logger.info(`Workflows: ${options.selectedWorkflows.join(', ') || 'None'}`);
-    if (options.selectedHooks && options.selectedHooks.length > 0) {
-      logger.info(`Hooks: ${options.selectedHooks.join(', ')}`);
+    
+    if (options.selectedPack) {
+      logger.info(`Starter Pack: ${options.selectedPack}`);
+    } else {
+      logger.info('Starter Pack: Empty (no defaults)');
     }
-    if (options.selectedAgents && options.selectedAgents.length > 0) {
-      logger.info(`Agents: ${options.selectedAgents.join(', ')}`);
-    }
+    
+    logger.info(`Installation Scope: ${options.installScope === 'global' ? 'Global (~/.zcc/)' : 'Project (.zcc/)'}`);
+    
     if (options.defaultMode) {
       logger.info(`Default Mode: ${options.defaultMode}`);
     }
-    logger.info(`Add to .gitignore: ${options.addToGitignore ? 'Yes' : 'No'}`);
+    
+    if (options.installScope === 'project') {
+      logger.info(`Add to .gitignore: ${options.addToGitignore ? 'Yes' : 'No'}`);
+    }
+    
     logger.space();
 
     const { confirmed } = await inquirer.prompt([
@@ -236,44 +205,54 @@ export class InteractiveSetup {
 
 
   /**
-   * Apply setup options (install components and save config)
+   * Apply setup options (install pack and save config)
    */
   async applySetup(options: SetupOptions): Promise<void> {
-    // Install selected modes
-    for (const mode of options.selectedModes) {
-      await this.componentInstaller.installComponent('mode', mode, options.force);
-    }
+    // Install starter pack if selected
+    if (options.selectedPack) {
+      logger.info(`Installing starter pack: ${options.selectedPack}...`);
+      const installResult = await this.starterPackManager.installPack(options.selectedPack, {
+        force: options.force
+      });
 
-    // Install selected workflows
-    for (const workflow of options.selectedWorkflows) {
-      await this.componentInstaller.installComponent('workflow', workflow, options.force);
-    }
-
-    // Install selected hooks
-    if (options.selectedHooks && options.selectedHooks.length > 0) {
-      for (const hook of options.selectedHooks) {
-        await this.hookManager.createHookFromTemplate(hook, {});
-        logger.success(`Installed hook: ${hook}`);
+      if (!installResult.success) {
+        throw new Error(`Failed to install starter pack: ${installResult.errors.join(', ')}`);
       }
-    }
 
-    // Install selected agents
-    if (options.selectedAgents && options.selectedAgents.length > 0) {
-      for (const agent of options.selectedAgents) {
-        await this.componentInstaller.installComponent('agent', agent, options.force);
+      logger.success(`Successfully installed starter pack: ${options.selectedPack}`);
+      
+      // Show installed components
+      const { installed } = installResult;
+      if (installed.modes.length > 0) {
+        logger.info(`Modes: ${installed.modes.join(', ')}`);
+      }
+      if (installed.workflows.length > 0) {
+        logger.info(`Workflows: ${installed.workflows.join(', ')}`);
+      }
+      if (installed.agents.length > 0) {
+        logger.info(`Agents: ${installed.agents.join(', ')}`);
+      }
+      if (installed.hooks.length > 0) {
+        logger.info(`Hooks: ${installed.hooks.join(', ')}`);
       }
     }
 
     // Save configuration
-    if (options.defaultMode || options.selectedModes.length > 0) {
-      const config = {
-        defaultMode: options.defaultMode,
-        components: {
-          modes: options.selectedModes,
-          workflows: options.selectedWorkflows,
-          agents: options.selectedAgents || [],
-        }
-      };
+    if (options.defaultMode || options.selectedPack) {
+      const config: any = {};
+      
+      if (options.defaultMode) {
+        config.defaultMode = options.defaultMode;
+      }
+      
+      if (options.selectedPack) {
+        config.installedPack = options.selectedPack;
+      }
+      
+      if (options.installScope) {
+        config.installScope = options.installScope;
+      }
+      
       await this.configManager.save(config);
     }
   }
